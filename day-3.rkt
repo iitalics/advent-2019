@@ -1,15 +1,15 @@
 #lang racket
+(require racket/hash)
 
 ;; left, right : T
 (struct interval [left right] #:transparent)
 
-;; T T -> [intervalof T]
-(define (make-interval l r)
-  (interval (min l r) (max l r)))
-
 ;; [intervalof T] T -> boolean
 (define (interval-contains? i x)
-  (<= (interval-left i) x (interval-right i)))
+  (match-define (interval l r) i)
+  (if (< r l)
+      (<= r x l)
+      (<= l x r)))
 
 ;; ux, uy : (or -1 +1)
 ;; len : integer
@@ -49,7 +49,8 @@
     (cons s1 s2)))
 
 ;; h-segs, v-segs : [listof seg]
-(struct grid [h-segs v-segs] #:transparent)
+;; pt=>len : [hasheq seg -> nat]
+(struct grid [h-segs v-segs seg=>len] #:transparent)
 
 ;; grid grid -> [listof (cons seg seg)]
 (define (grid-intersections g1 g2)
@@ -58,16 +59,29 @@
 
 ;; [listof path] -> grid
 (define (paths->grid paths)
-  (for/fold ([vs '()] [hs '()]
-             [x 0] [y 0]
-             #:result (grid vs hs))
+  (for/fold ([vs '()]
+             [hs '()]
+             [x 0]
+             [y 0]
+             [seg=>len (hasheq)]
+             [len 0]
+             #:result (grid vs hs seg=>len))
             ([p (in-list paths)])
     (define-values [x* y*] (path-endpoint p x y))
-    (define-values [vs* hs*]
+    (define-values [s vs* hs*]
       (match (path-axis p)
-        ['h (values vs (cons (seg y (make-interval x x*)) hs))]
-        ['v (values (cons (seg x (make-interval y y*)) vs) hs)]))
-    (values vs* hs* x* y*)))
+        ['h (let ([s (seg y (interval x x*))]) (values s vs (cons s hs)))]
+        ['v (let ([s (seg x (interval y y*))]) (values s (cons s vs) hs))]))
+    (values vs* hs* x* y*
+            (hash-set seg=>len s len)
+            (+ len (path-len p)))))
+
+;; grid seg integer -> nat
+(define (wire-len g s pos)
+  (match (hash-ref (grid-seg=>len g) s #f)
+    [#f 0]
+    [len (+ len (abs ; distance to beginning of segment
+                 (- pos (interval-left (seg-int s)))))]))
 
 ;; g1, g2 : grid
 (match-define (list (app paths->grid g1) (app paths->grid g2))
@@ -82,3 +96,9 @@
 (apply min (for/list ([ss (in-list intersects)])
              (match-define (cons (seg x _) (seg y _)) ss)
              (+ (abs x) (abs y))))
+
+(apply min (for/list ([ss (in-list intersects)])
+             (match-define (cons s-x s-y) ss)
+             (for/sum ([g (list g1 g2)])
+               (+ (wire-len g s-x (seg-pos s-y))
+                  (wire-len g s-y (seg-pos s-x))))))

@@ -1,12 +1,8 @@
 #lang racket
 
-(define (->num s/b)
-  (string->number
-   (if (bytes? s/b) (bytes->string/utf-8 s/b) s/b)))
-
 (define (read-number port)
   (match (regexp-match #px"\\d+" port)
-    [(list x) (->num x)]
+    [(list x) (string->number (bytes->string/utf-8 x))]
     [_ eof]))
 
 (define prog
@@ -32,9 +28,9 @@
         [2 (bin-op * off)]
         [99 (halt (vector-ref mem 0))]))))
 
-(run 12 2)
+(run 12 2) ; part 1
 
 (for*/first ([noun (in-range 100)]
              [verb (in-range 100)]
              #:when (= (run noun verb) 19690720))
-  (+ (* 100 noun) verb))
+  (+ (* 100 noun) verb)) ; part 2
